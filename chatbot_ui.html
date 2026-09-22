@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>RAG Chatbot</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+  <style>
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    background: linear-gradient(135deg, #1e1e2f, #1c1f3f);
+    margin: 0;
+    padding: 0;
+    color: #f9f9f9;
+  }
+
+  header {
+    text-align: center;
+    background: linear-gradient(to right, #6a11cb, #2575fc);
+    padding: 20px;
+  }
+
+  header h1 {
+    margin: 0;
+    font-size: 2rem;
+    color: #ffffff;
+    text-shadow: 1px 1px 4px rgba(0,0,0,0.6);
+  }
+
+  .project-description, .card, .contact {
+    max-width: 800px;
+    margin: 20px auto;
+    background: #2a2a3b;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 0 15px rgba(0,0,0,0.5);
+  }
+
+  .project-description p {
+    margin: 0;
+  }
+
+  .card h2 {
+    margin-top: 0;
+    color: #90caf9;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+  }
+
+  .grid-item {
+    background: linear-gradient(135deg, #00c6ff, #0072ff);
+    padding: 10px;
+    text-align: center;
+    border-radius: 6px;
+    color: white;
+    font-weight: bold;
+    box-shadow: 0 0 8px rgba(0,0,0,0.3);
+  }
+
+  .contact {
+    text-align: center;
+  }
+
+  .contact h3 {
+    margin-top: 0;
+    color: #ffb74d;
+  }
+
+  .contact a {
+    margin: 0 10px;
+    color: #ffcc80;
+    font-size: 1.5rem;
+    text-decoration: none;
+  }
+
+  .chat-container {
+    width: 400px;
+    background: #26263b;
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 12px rgba(0,0,0,0.5);
+    margin: 40px auto;
+  }
+
+  .chat-header {
+    background: #2a2a3b;
+    padding: 16px;
+    text-align: center;
+    font-weight: bold;
+    font-size: 1.2rem;
+    color: white;
+  }
+
+  .chatbox {
+    flex: 1;
+    padding: 16px;
+    overflow-y: auto;
+    max-height: 300px;
+    display: flex;
+    flex-direction: column;
+    scroll-behavior: smooth;
+  }
+
+  .chat {
+    margin-bottom: 12px;
+    padding: 10px;
+    border-radius: 8px;
+    max-width: 90%;
+  }
+
+  .chat-incoming {
+    background-color: #7e57c2;
+    align-self: flex-start;
+    color: #fff;
+  }
+
+  .chat-outgoing {
+    background-color: #29b6f6;
+    align-self: flex-end;
+    text-align: right;
+    color: #fff;
+  }
+
+  .chat-input {
+    display: flex;
+    padding: 10px;
+    background: #1c1f3f;
+    border-top: 1px solid #444;
+  }
+
+  .chat-input textarea {
+    flex: 1;
+    padding: 8px;
+    border-radius: 6px;
+    border: none;
+    resize: none;
+    font-size: 1rem;
+    background: #3949ab;
+    color: white;
+  }
+
+  .chat-input button {
+    margin-left: 10px;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 6px;
+    background-color: #00bfa5;
+    color: white;
+    cursor: pointer;
+    transition: background 0.3s;
+  }
+
+  .chat-input button:hover {
+    background-color: #1de9b6;
+  }
+
+  .chat-upload {
+    padding: 10px;
+    background-color: #1c1f3f;
+    border-bottom: 1px solid #444;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  .chat-upload input {
+    background-color: #3949ab;
+    color: white;
+    padding: 6px;
+    border: none;
+    border-radius: 6px;
+  }
+
+  .chat-upload button {
+    padding: 6px 12px;
+    background: #ff7043;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    color: white;
+    transition: background 0.3s;
+  }
+
+  .chat-upload button:hover {
+    background: #ffa270;
+  }
+
+  #toggleUploadBtn {
+    margin: 8px auto;
+    display: none;
+    background: #757de8;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.3s;
+  }
+
+  #toggleUploadBtn:hover {
+    background: #9fa8da;
+  }
+</style>
+
+</head>
+<body>
+
+  <header>
+    <h1><i class="fas fa-brain"></i> RAG Chatbot with Memory using Langchain</h1>
+  </header>
+
+  <div class="project-description">
+    <p>This is a Retrieval-Augmented Generation (RAG) chatbot enhanced with session memory. It uses past conversation context to generate more relevant and coherent answers over time. Users can upload PDFs which are converted into searchable vector embeddings, and the chatbot intelligently answers queries using that document context + chat history.</p>
+  </div>
+  
+
+  
+
+  <!-- ✅ Chatbot UI (unchanged) -->
+  <div class="chat-container">
+    <div class="chat-header">RAG Chatbot</div>
+
+    <div class="chat-upload" id="uploadSection">
+      <input type="file" id="pdfInput" accept=".pdf" />
+      <button onclick="uploadPDF()">Upload PDF</button>
+    </div>
+
+    <button id="toggleUploadBtn" onclick="toggleUploadSection()">➕ Upload another PDF</button>
+
+    <div class="chatbox" id="chatbox"></div>
+
+    <div class="chat-input">
+      <textarea id="userInput" rows="1" placeholder="Type your message..."></textarea>
+      <button onclick="handleChat()">Send</button>
+    </div>
+  </div>
+
+  <script>
+    const chatbox = document.getElementById("chatbox");
+
+    function createChatLi(message, className) {
+      const chatLi = document.createElement("div");
+      chatLi.classList.add("chat", className);
+      chatLi.textContent = message;
+      return chatLi;
+    }
+
+    function handleChat() {
+      const userInput = document.getElementById("userInput");
+      const message = userInput.value.trim();
+      if (!message) return;
+
+      chatbox.appendChild(createChatLi(message, "chat-outgoing"));
+      chatbox.scrollTo(0, chatbox.scrollHeight);
+      userInput.value = "";
+
+      const thinkingMsg = createChatLi("Thinking...", "chat-incoming");
+      chatbox.appendChild(thinkingMsg);
+      chatbox.scrollTo(0, chatbox.scrollHeight);
+
+      fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: message, session_id: "portfolio_session" })
+      })
+        .then(res => res.json())
+        .then(data => {
+          thinkingMsg.remove();
+          const reply = data.answer || "❌ No response received.";
+          chatbox.appendChild(createChatLi(reply, "chat-incoming"));
+          chatbox.scrollTo(0, chatbox.scrollHeight);
+        })
+        .catch(err => {
+          console.error("Chat error:", err);
+          thinkingMsg.remove();
+          chatbox.appendChild(createChatLi("❌ Error fetching response.", "chat-incoming"));
+        });
+    }
+
+    function uploadPDF() {
+      const fileInput = document.getElementById("pdfInput");
+      const file = fileInput.files[0];
+      if (!file || file.type !== "application/pdf") {
+        chatbox.appendChild(createChatLi("❌ Please select a valid PDF file.", "chat-incoming"));
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("session_id", "portfolio_session");
+
+      fetch("/load_pdf/", {
+        method: "POST",
+        body: formData
+      })
+        .then(async res => {
+          if (!res.ok) throw new Error(await res.text());
+          return res.json();
+        })
+        .then(data => {
+          const successMsg = data.message ? `✅ ${data.message}` : "✅ PDF uploaded.";
+          chatbox.appendChild(createChatLi(successMsg, "chat-incoming"));
+          document.getElementById("uploadSection").style.display = "none";
+          document.getElementById("toggleUploadBtn").style.display = "block";
+        })
+        .catch(err => {
+          console.error("Upload error:", err);
+
+          chatbox.appendChild(
+            createChatLi(
+            "❌ Upload failed: " + err.message,
+            "chat-incoming"
+          )
+        );
+      });  
+    }
+
+    function toggleUploadSection() {
+      const section = document.getElementById("uploadSection");
+      const toggleBtn = document.getElementById("toggleUploadBtn");
+      const isHidden = section.style.display === "none";
+      section.style.display = isHidden ? "flex" : "none";
+      toggleBtn.textContent = isHidden ? "➖ Hide PDF Upload" : "➕ Upload another PDF";
+    }
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,64 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+venv310/
+.env/
+.venv/
+
+# =========================
+# Environment variables
+# =========================
+.env
+
+
+# =========================
+# Uploaded PDFs / temporary files
+# =========================
+temp_uploads/
+*.pdf
+
+# =========================
+# RAG generated vector stores
+# =========================
+vectors/
+
+# FAISS files
+*.faiss
+*.pkl
+
+# =========================
+# IDE / Editor
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Logs
+# =========================
+*.log
+
+# =========================
+# Python cache / testing
+# =========================
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# =========================
+# Jupyter
+# =========================
+.ipynb_checkpoints/
