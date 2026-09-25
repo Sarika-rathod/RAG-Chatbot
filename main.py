@@ -1,4 +1,3 @@
-# -------------------- Imports --------------------
 from fastapi import FastAPI, Form, UploadFile, File
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,8 +6,6 @@ from typing import Dict
 from dotenv import load_dotenv
 import os
 
-
-# -------------------- Environment Setup --------------------
 load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -16,12 +13,9 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 if not GROQ_API_KEY:
     print("WARNING: GROQ_API_KEY is not set")
 
-
-# -------------------- FastAPI App --------------------
 app = FastAPI()
 
 
-# -------------------- CORS --------------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -31,7 +25,7 @@ app.add_middleware(
 )
 
 
-# -------------------- Lazy Groq LLM --------------------
+# -------------------- Groq LLM --------------------
 llm = None
 
 
@@ -69,11 +63,11 @@ def get_session_history(session_id: str):
 
 
 # -------------------- BM25 Retriever Store --------------------
-# Stores one BM25 retriever per session.
+
 retriever_store = {}
 
 
-# -------------------- Serve Frontend --------------------
+
 @app.get("/")
 async def serve_html():
     return FileResponse("chatbot_ui.html")
