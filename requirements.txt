@@ -2,35 +2,12 @@ fastapi==0.116.1
 uvicorn==0.35.0
 python-multipart==0.0.20
 python-dotenv==1.1.1
-pydantic==2.11.7
 
-# LangChain
 langchain==0.3.26
 langchain-community==0.3.27
 langchain-core==0.3.67
 langchain-groq==0.3.5
-langchain-huggingface==0.3.0
-langchain-pinecone
 langchain-text-splitters==0.3.8
-langsmith==0.4.4
 
-# PDF
 pypdf==5.7.0
-
-# Embeddings
-sentence-transformers==5.0.0
-huggingface-hub==0.33.2
-transformers==4.53.0
-tokenizers==0.21.2
-safetensors==0.5.3
-
-# ML dependencies
-torch==2.7.1
-numpy==2.0.2
-scikit-learn==1.6.1
-scipy==1.13.1
-joblib==1.5.1
-threadpoolctl==3.6.0
-
-# Pinecone
-pinecone
+rank_bm25==0.2.2
