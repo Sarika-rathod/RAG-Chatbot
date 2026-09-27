@@ -1,22 +1,25 @@
-from fastapi import FastAPI, Form, UploadFile, File
-from fastapi.responses import JSONResponse, FileResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Dict
-from dotenv import load_dotenv
 import os
 import uuid
+from typing import Dict
 
-from langchain.chains import create_history_aware_retriever, create_retrieval_chain
+from dotenv import load_dotenv
+from fastapi import FastAPI, File, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
+from langchain.chains import create_history_aware_retriever
 from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain_core.chat_history import BaseChatMessageHistory
-from langchain_community.chat_message_histories import InMemoryChatMessageHistory
+from langchain.chains.retrieval import create_retrieval_chain
+from langchain_core.chat_history import BaseChatMessageHistory, InMemoryChatMessageHistory
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables.history import RunnableWithMessageHistory
+
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
+
 from pinecone import Pinecone, ServerlessSpec
 from langchain_pinecone import PineconeVectorStore
 
