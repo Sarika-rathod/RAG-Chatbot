@@ -1,0 +1,8 @@
+venv310/
+.env
+.git/
+__pycache__/
+*.pyc
+.pytest_cache/
+temp_uploads/
+vectors/
