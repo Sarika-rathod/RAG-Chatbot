@@ -62,3 +62,9 @@ htmlcov/
 # Jupyter
 # =========================
 .ipynb_checkpoints/
+
+# =========================
+# Docker
+# =========================
+docker-compose.override.yml
+.docker/
