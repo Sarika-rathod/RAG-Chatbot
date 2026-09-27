@@ -9,7 +9,7 @@ import os
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.chat_history import BaseChatMessageHistory
-from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain_community.chat_message_histories import InMemoryChatMessageHistory
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_community.document_loaders import PyPDFLoader
@@ -31,7 +31,10 @@ if not GROQ_API_KEY:
 if not PINECONE_API_KEY:
     print("WARNING: PINECONE_API_KEY is not set")
 
-app = FastAPI()
+app = FastAPI(title="RAG Chatbot API",
+    description="Document-based RAG chatbot using LangChain, Pinecone and Groq",
+    version="1.0.0"
+    )
 
 app.add_middleware(
     CORSMiddleware,
@@ -54,48 +57,71 @@ def get_llm():
         print("Groq LLM initialized.")
     return llm
 
-session_store: Dict[str, BaseChatMessageHistory] = {}
+session_store: Dict[str, InMemoryChatMessageHistory] = {}
 
-def get_session_history(session_id: str):
+def get_session_history(session_id: str)->BaseChatMessageHistory:
     if session_id not in session_store:
-        session_store[session_id] = ChatMessageHistory()
+        session_store[session_id] = InMemoryChatMessageHistory()
     return session_store[session_id]
 
-embeddings = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2",
-    model_kwargs={"device": "cpu"}
-)
-
-pc = Pinecone(api_key=PINECONE_API_KEY)
-
+embeddings = None
+pc = None
+pinecone_index = None
 INDEX_NAME = PINECONE_INDEX_NAME
 EMBEDDING_DIMENSION = 384
-
-existing_indexes = pc.list_indexes().names()
-
-if INDEX_NAME not in existing_indexes:
-    print(f"Creating Pinecone index: {INDEX_NAME}")
-    pc.create_index(
-        name=INDEX_NAME,
-        dimension=EMBEDDING_DIMENSION,
-        metric="cosine",
-        spec=ServerlessSpec(
-            cloud="aws",
-            region="us-east-1"
-        )
+def initialize_services():
+    global embeddings
+    global pc
+    global pinecone_index
+    # Already initialized
+    if embeddings is not None and pinecone_index is not None:
+        return
+    print("Initializing HuggingFace embeddings...")
+    embeddings = HuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-MiniLM-L6-v2",
+        model_kwargs={
+            "device": "cpu"
+        }
     )
-    print("Pinecone index created.")
+    print("Connecting to Pinecone...")
+    pc = Pinecone(
+        api_key=PINECONE_API_KEY
+    )
+    existing_indexes = pc.list_indexes().names()
+    if INDEX_NAME not in existing_indexes:
+        print(
+            f"Creating Pinecone index: {INDEX_NAME}"
+        )
+        pc.create_index(
+            name=INDEX_NAME,
+            dimension=EMBEDDING_DIMENSION,
+            metric="cosine",
+            spec=ServerlessSpec(
+                cloud="aws",
+                region="us-east-1"
+            )
+        )
+        print("Pinecone index created.")
+    pinecone_index = pc.Index(
+        INDEX_NAME
+    )
+    print(
+        "Pinecone initialized successfully."
+    )
 
-pinecone_index = pc.Index(INDEX_NAME)
-
-vectorstore_cache = {}
+class ChatRequest(BaseModel):
+    session_id: str
+    question: str
 
 @app.get("/")
-async def serve_html():
-    return FileResponse("chatbot_ui.html")
+def root():
+    return {
+        "status": "ok",
+        "message": "RAG Chatbot API is running"
+    }
 
 @app.get("/health")
-async def health_check():
+def health():
     return {
         "status": "ok",
         "message": "RAG chatbot is running",
@@ -103,181 +129,234 @@ async def health_check():
     }
 
 @app.post("/load_pdf/")
-async def load_pdf_upload(
+async def load_pdf(
     file: UploadFile = File(...),
-    session_id: str = Form(...)
+    session_id: str = "default"
 ):
-    print(f"Received PDF for session: {session_id}")
-
+    print(
+        f"Loading PDF for session: {session_id}"
+    )
+    # Initialize heavy services only when needed
+    initialize_services()
+    # Validate file type
     if not file.filename.lower().endswith(".pdf"):
-        return JSONResponse(
-            status_code=400,
-            content={"error": "Only PDF files are allowed."}
-        )
-
+        return {
+            "status": "error",
+            "message": "Only PDF files are supported."
+        }
+    # Create temporary file
+    temp_filename = f"/tmp/{uuid.uuid4()}_{file.filename}"
     try:
-        os.makedirs("temp_uploads", exist_ok=True)
-
-        safe_filename = os.path.basename(file.filename)
-        file_location = os.path.join("temp_uploads", safe_filename)
-
-        file_content = await file.read()
-
-        with open(file_location, "wb") as f:
-            f.write(file_content)
-
-        print(f"PDF saved: {file_location}")
-
-        loader = PyPDFLoader(file_location)
+        contents = await file.read()
+        with open(
+            temp_filename,
+            "wb"
+        ) as f:
+            f.write(contents)
+        
+        loader = PyPDFLoader(
+            temp_filename
+        )
         documents = loader.load()
-
-        print(f"Loaded {len(documents)} pages")
-
+        if not documents:
+            return {
+                "status": "error",
+                "message": "Could not extract content from PDF."
+            }
+        
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1500,
             chunk_overlap=200
         )
-
-        splits = text_splitter.split_documents(documents)
-
-        print(f"Created {len(splits)} chunks")
-
-        for i, document in enumerate(splits):
-            document.metadata["session_id"] = session_id
-            document.metadata["chunk_id"] = i
-            document.metadata["source_file"] = safe_filename
-
-        print("Creating embeddings and uploading vectors to Pinecone...")
-
-        vectorstore = PineconeVectorStore.from_documents(
-            documents=splits,
+        chunks = text_splitter.split_documents(
+            documents
+        )
+        
+        for index, chunk in enumerate(chunks):
+            chunk.metadata["session_id"] = session_id
+            chunk.metadata["chunk_id"] = index
+            chunk.metadata["source_file"] = (
+                file.filename
+            )
+       
+        vector_store = PineconeVectorStore(
+            index=pinecone_index,
             embedding=embeddings,
-            index_name=INDEX_NAME,
             namespace=session_id
         )
-
-        vectorstore_cache[session_id] = vectorstore
-
-        print("Successfully stored document vectors in Pinecone.")
-
-        return {
-            "message": "Uploaded successfully",
-            "pages": len(documents),
-            "chunks": len(splits),
-            "vector_database": "Pinecone",
-            "namespace": session_id
-        }
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return JSONResponse(
-            status_code=500,
-            content={"error": str(e)}
+        vector_store.add_documents(
+            chunks
         )
-
-class ChatRequest(BaseModel):
-    prompt: str
-    session_id: str
-
-@app.post("/chat")
-async def chat_with_pdf(request: ChatRequest):
-    prompt = request.prompt
-    session_id = request.session_id
-
-    print("Received prompt for session:", session_id)
-
-    try:
-        if session_id not in vectorstore_cache:
-            print("Loading Pinecone vector store...")
-
-            vectorstore = PineconeVectorStore(
-                index=pinecone_index,
-                embedding=embeddings,
-                namespace=session_id
+        return {
+            "status": "success",
+            "message": "PDF uploaded and indexed successfully.",
+            "filename": file.filename,
+            "session_id": session_id,
+            "pages": len(documents),
+            "chunks": len(chunks)
+        }
+    except Exception as e:
+        print(
+            f"PDF processing error: {str(e)}"
+        )
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+    finally:
+        # Remove temporary file
+        if os.path.exists(temp_filename):
+            os.remove(
+                temp_filename
             )
 
-            vectorstore_cache[session_id] = vectorstore
-        else:
-            vectorstore = vectorstore_cache[session_id]
-
-        retriever = vectorstore.as_retriever(
+@app.post("/chat")
+async def chat(
+    request: ChatRequest
+):
+    session_id = request.session_id
+    question = request.question
+    print(
+        f"Chat request received for session: {session_id}"
+    )
+    # Initialize heavy services only when needed
+    initialize_services()
+    try:
+       
+        vector_store = PineconeVectorStore(
+            index=pinecone_index,
+            embedding=embeddings,
+            namespace=session_id
+        )
+       
+        retriever = vector_store.as_retriever(
             search_type="similarity",
-            search_kwargs={"k": 3}
+            search_kwargs={
+                "k": 3
+            }
         )
-
-        language_model = get_llm()
-
-        contextualize_q_prompt = ChatPromptTemplate.from_messages([
-            (
-                "system",
-                "Given a chat history and the latest user question which might reference context, formulate a standalone question."
-            ),
-            MessagesPlaceholder("chat_history"),
-            ("human", "{input}")
-        ])
-
-        history_aware_retriever = create_history_aware_retriever(
-            language_model,
-            retriever,
-            contextualize_q_prompt
+        
+        llm = get_llm()
+       
+        contextualize_q_system_prompt = """
+Given a chat history and the latest user question,
+rewrite the question so that it can be understood
+without the chat history.
+Do not answer the question.
+Return only the rewritten standalone question.
+"""
+        contextualize_q_prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    contextualize_q_system_prompt
+                ),
+                MessagesPlaceholder(
+                    "chat_history"
+                ),
+                (
+                    "human",
+                    "{input}"
+                )
+            ]
         )
-
-        qa_prompt = ChatPromptTemplate.from_messages([
-            (
-                "system",
-                """You are a helpful document assistant.
-
-Answer the user's question using only the provided document context.
-
-Keep the answer concise and clear.
-
-If the answer cannot be found in the provided document context, say:
+        
+        history_aware_retriever = (
+            create_history_aware_retriever(
+                llm,
+                retriever,
+                contextualize_q_prompt
+            )
+        )
+       
+        system_prompt = """
+You are a helpful document-based AI assistant.
+Answer the user's question using ONLY the
+information available in the provided document context.
+If the answer cannot be found in the document,
+respond exactly:
 "I don't know based on the uploaded document."
-
-DOCUMENT CONTEXT:
-{context}"""
-            ),
-            MessagesPlaceholder("chat_history"),
-            ("human", "{input}")
-        ])
-
-        document_chain = create_stuff_documents_chain(
-            language_model,
-            qa_prompt
+Do not make up information.
+Keep answers clear, accurate and concise.
+Context:
+{context}
+"""
+        qa_prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    system_prompt
+                ),
+                MessagesPlaceholder(
+                    "chat_history"
+                ),
+                (
+                    "human",
+                    "{input}"
+                )
+            ]
         )
-
+        
+        question_answer_chain = (
+            create_stuff_documents_chain(
+                llm,
+                qa_prompt
+            )
+        )
+        
         rag_chain = create_retrieval_chain(
             history_aware_retriever,
-            document_chain
+            question_answer_chain
         )
-
+        
         conversational_rag_chain = RunnableWithMessageHistory(
             rag_chain,
-            lambda sid: get_session_history(sid),
+            get_session_history,
             input_messages_key="input",
             history_messages_key="chat_history",
             output_messages_key="answer"
         )
-
+       
         response = conversational_rag_chain.invoke(
-            {"input": prompt},
+            {
+                "input": question
+            },
             config={
                 "configurable": {
                     "session_id": session_id
                 }
             }
         )
-
+        answer = response.get(
+            "answer",
+            ""
+        )
+        
         return {
-            "answer": response["answer"]
+            "status": "success",
+            "session_id": session_id,
+            "question": question,
+            "answer": answer
+        }
+    except Exception as e:
+        print(
+            f"Chat error: {str(e)}"
+        )
+        return {
+            "status": "error",
+            "message": str(e)
         }
 
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-
-        return JSONResponse(
-            status_code=500,
-            content={"error": str(e)}
-        )
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=int(
+            os.getenv(
+                "PORT",
+                8000
+            )
+        ),
+        reload=False
+    )
