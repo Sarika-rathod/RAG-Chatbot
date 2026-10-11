@@ -299,12 +299,7 @@ async def load_pdf_upload(
 
         return JSONResponse(
             status_code=500,
-            content={
-                "error": (
-                    "PDF processing failed. Check the Render logs "
-                    "for details."
-                ),
-            },
+            content={"error": f"{type(e)._name_}:{str(e)}" },
         )
 
     finally:
