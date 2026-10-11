@@ -294,7 +294,7 @@ async def load_pdf_upload(
     except HTTPException:
         raise
 
-    except Exception:
+    except Exception as e:
         logger.exception("PDF processing failed.")
 
         return JSONResponse(
